@@ -262,46 +262,7 @@ for (i in 1:28) {
   plotMDS(Dn3[daloox3GBM_tco3[[i]],], col=as.integer(dg3), main=paste(c("E",i)))
 }
 
-# test of clustering with p=0.25 and p=2 Minkowski distance with scrambled Dn3 rows 
 
-dg3GBMCcrits=sapply(1:28, function(i) {
-  critX3test(Dn3[daloox3GBM_tco3[[i]],],dg3)
-})
-
-rndn3crdGBM1=sapply(1:28,function(j){
-  proct=proc.time()
-  x=sapply(1:1000, function(i){
-    rDn3=t(apply(Dn3,1,sample))
-    critX3test(rDn3[daloox3GBM_tco3[[j]],],dg3GBM)[2:3]
-  })
-  print(proc.time()-proct)
-  cbind(range(x[1,]),range(x[1,]))
-})
-
-
-for (i in 2:3) {
-  plot(1:28,t(dg3GBMCcrits)[,i],col=i, xlim=c(1,20),ylim=c(-0.7,1.4), type="l", lwd=2, xlab="Feature Set Commonality", ylab="Clusterin Criterion")
-  par(new=TRUE)
-}
-legend("topright", c("Eucledian distance","Fractional p distance"), lty=1, col=c(2,3))
-par(new=TRUE)
-for (i in 1:28) {
-  plot(rep((i+0.1),2),rndn3crdGBM1[1:2,i],col=2, xlim=c(1,28), ylim=c(-0.7,1.4), cex=0, type="l", lty="dotted", xlab="", ylab="")
-  par(new=TRUE)
-}
-for (i in 1:2) {
-  plot(1:28,rndn3crdGBM1[i,],col=2, xlim=c(1,28), ylim=c(-0.7,1.4), cex=0, type="l", lty="dotted", xlab="", ylab="")
-  par(new=TRUE)
-}
-for (i in 1:28) {
-  plot(rep(i,2),rndn3crdGBM1[3:4,i],col=3, xlim=c(1,28), ylim=c(-0.7,1.4), cex=0, type="l", lty="dotted", xlab="", ylab="")
-  par(new=TRUE)
-}
-for (i in 3:4) {
-  plot((1:28),rndn3crdGBM1[i,],col=3, xlim=c(1,28), ylim=c(-0.7,1.4), cex=0, type="l", lty="dotted", xlab="", ylab="")
-  par(new=TRUE)
-}
-par(new=FALSE)
 
 ################### Plot of best separation of batch "R" using the generalizing feature set common for 19 
 # or more bootstrap sets derived from the batch compensated data set. Note the proper classification of the 
