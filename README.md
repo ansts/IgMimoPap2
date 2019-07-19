@@ -3,3 +3,4 @@
 #
 # Main script - pipeline
 # Figmakers for the actual figures
+# Additional figure 6 with script pepclassbootstrap and library renaming convention
