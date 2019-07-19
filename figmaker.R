@@ -296,7 +296,8 @@ dev.off()
 ######################
 pdf(file="cmdsvalGBM.pdf",  width=7, height=6)
 require(plot3D)
-y=cmdscale(dist(t(Dn3[daloox3GBMe_tco[[15]],])))
+require(e1071)
+y=cmdscale(dist(t(Dn3[daloox3GBMe_tco[[14]],])))
 ym=svm(y[!d3New,], as.factor(dg3GBM[!d3New]), gamma = 0.1, cost=1000, probability = TRUE)
 pry=sapply(seq(range(y[,1])[1], range(y[,1])[2], length.out = 10), function(x1){
       sapply(seq(range(y[,2])[1], range(y[,2])[2], length.out = 10), function(x2){
@@ -306,9 +307,9 @@ pry=sapply(seq(range(y[,1])[1], range(y[,1])[2], length.out = 10), function(x1){
 op=par(mai=c(1,1,1,1))
 image2D(t(pry),resfac = 10, col=cm.colors(1000), xaxt="n", yaxt="n", xlab="", ylab="", colkey = NULL)
 op=par(new=TRUE,mai=c(1,1,1,1.56))
-plot(cmdscale(dist(t(Dn3[daloox3GBMe_tco[[15]],]))), col=as.integer(dg3),cex=1.5, pch=16, xlab="D1", ylab="D2")
+plot(cmdscale(dist(t(Dn3[daloox3GBMe_tco[[14]],]))), col=as.integer(dg3),cex=1.5, pch=16, xlab="D1", ylab="D2")
 par(new=TRUE)
-plot(cmdscale(dist(t(Dn3[daloox3GBMe_tco[[15]],]))), col=as.integer(!(colnames(Dn3) %in% Dncllnms)),cex=2.5, xlab="", ylab="")
+plot(cmdscale(dist(t(Dn3[daloox3GBMe_tco[[14]],]))), col=as.integer(!(colnames(Dn3) %in% Dncllnms)),cex=2.5, xlab="", ylab="")
 legend("bottomright",levels(dg3), col = 1:length(d2), pch = 16, bty="n", cex=0.75)
 par(op)
 dev.off()

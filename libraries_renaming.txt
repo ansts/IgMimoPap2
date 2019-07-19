@@ -1,0 +1,26 @@
+NAMING CONVENTIONS FOR PEPTIDE LIBRARIES USED IN THE STUDY
+
+The variable names for the libraries  
+used in the scripts differ
+from the labels used in the manuscript. 
+This table links the two designations.
+
+Label		Variable
+
+SYM.........peppos
+C5_1........pep5	
+C5_2........pepother5
+C5P.........pep5pred
+NG1.........pepneg
+NG2.........pepneglo
+NGR.........pepnegrnd
+RND.........peprnd
+
+
+
+
+
+
+
+
+
