@@ -1,6 +1,3 @@
-# This function is sfrom the pepStat package
-#
-#
 pepnorm<-function(data, method="ZpepQuad", robust = TRUE, centered = FALSE, standard = FALSE) {
   x=rownames(data)
   zW=mkZpepMx(x)
