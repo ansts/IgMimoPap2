@@ -1,4 +1,4 @@
-# Processes microarray data organized in blocks
+#
 #
 #
 blogpr<-function(p, sh=FALSE){
@@ -111,7 +111,7 @@ blogpr<-function(p, sh=FALSE){
   clusterExport(cl, ex)
   clusterExport(cl, list("R0", "coor"), envir=environment())
   B0=parApply(cl,R0, 2, function(clm){
-      
+      #gprl1(clm, coor[[1]]$Row, coor[[1]]$Column, ID, shw = TRUE)
       IM=data.frame(R=coor[[1]]$Row, C=coor[[1]]$Column, V=clm)
       ID=data.frame(R=coor[[1]]$Row, C=coor[[1]]$Column, V=ID, stringsAsFactors = FALSE)
       ID[,1]=as.double(ID[,1])

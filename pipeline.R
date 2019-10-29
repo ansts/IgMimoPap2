@@ -3,13 +3,19 @@ require(stringi)
 require(matrixStats)
 require(pepStat)
 require(limma)
-
+require(prallel)
 require(sva)
-#require(energy)
 require(mixtools)
 require(reshape2)
 require(d3heatmap)
 require(Rtsne)
+require(umap)
+require(clusterCrit)
+require(rgl)
+require(Rfast)
+require(e1071)
+require(plot3D)
+
 cpl=colorRampPalette(c("#001030","#0050AA","#10AA10","#FFFF00","#FFA000","#B50000"))
 
 #
@@ -74,259 +80,209 @@ dgalless=factor(dgalless, levels = unique(dgalless))
 # label batches: red channel, green channel, old arrays (which are green too)
 batches=as.factor(c(as.character(ch),rep("O",11)))
 Dnall=normalizeCyclicLoess(Dall, method="affy", span=.15, iterations=4)
-Dncall=ComBat(Dnall,batches, model.matrix(~dgalless))
+
+# selecting 5 GBM cases from batch "R" to include to balance the batch/group distribution
+
+G5m=combn(colnames(Dall)[dgall=="GBM" & batches=="R"],5)
+GBM5means=apply(G5m,2,function(s){rowMeans(Dnall[,s])})
+x=rowMeans(Dnall[,colnames(Dnall)[dgalless=="GBM" & batches=="R"]])
+GBM5means=cbind(x,GBM5means)
+colnames(GBM5means)=c(0,1:126)
+GBM5CVs=apply(G5m,2,function(s){rowSds(Dnall[,s])})
+x=rowSds(Dnall[,colnames(Dnall)[dgalless=="GBM" & batches=="R"]])
+GBM5CVs=cbind(x,GBM5CVs)
+colnames(GBM5CVs)=c(0,1:126)
+GBM5CVs=GBM5CVs/GBM5means
+
+# find the distance from the mean/CV of the rows of all R GBMs to the mean/var of the rows of each combination of 4
+
+dG5v=as.matrix(dist(t(GBM5CVs)))[2:127,1]
+dG5m=as.matrix(dist(t(GBM5means)))[2:127,1]
+
+# and the distance from the origin to the point defined by the ranks of mean/var
+
+dG5mv=sqrt(rank(dG5m)^2+rank(dG5v)^2)
+
+# the 5 cases are
+the5=G5m[,which.min(dG5mv)]
+
+# ComBat batch compensation
+
 blncDnall=!(dgalless %in% c("MB", "G")) & !((batches == "R") & (dgalless=="GBM") & !(colnames(Dnall) %in% the5))
-Dncll=ComBat(Dnall[,blncDnall],batches[blncDnall])
-dgis=dgi[blncDnall]
 batchs=batches[blncDnall]
+Dncll=ComBat(Dnall[,blncDnall],batchs)
+dgis=dgi[blncDnall]
 bgis=as.integer(batchs)
 dgll=factor(dgall[blncDnall])
-dgllC=dgll=="C"
 dgllGBM=dgll=="GBM"
-dgllML=dgll=="ML"
+meanall=rowMeans(Dncll)
+sdall=rowSds(Dncll)
 peps=rownames(Dnall)
 
-plotMDS(Dnall, col=dgi)
-plotMDS(Dnall, col=as.integer(batches))
-plotMDS(Dncall, col=dgi)
-plotMDS(Dncall, col=as.integer(batches))
-plotMDS(Dncll, col=dgis)
-plotMDS(Dncll, col=bgis)
-
-Dnll3=Dnall[,batches=="R" & dgall %in% c("C","GBM","ML", "MB")]
-meanall=rowMeans(Dncall)
+Dnll3=Dnall[,batches=="R"]
 meanall3=rowMeans(Dnll3)
-sdall=rowSds(Dncall)
 sdall3=rowSds(Dnll3)
 
-
 #find background spots
-
-tsDncall=Rtsne(Dncall, initial_dims = 10, perplexity = 5)
-plot(tsDncall$Y, pch=16, col=cpl(586)[rank(meanall)], xlab="F1", ylab="F2", main="Rtsne Plot of Data")
-tsnDncll=Rtsne(Dncll, initial_dims = 10, perplexity = 5)
-plot(tsnDncll$Y, pch=16, col=cpl(586)[rank(meanall)], xlab="F1", ylab="F2", main="Rtsne Plot of Data")
+# for batch 3 alone
 tsnDnll3=Rtsne(Dnll3, initial_dims = 3, perplexity = 20)
 plot(tsnDnll3$Y, pch=16, col=cpl(586)[rank(meanall3)], xlab="F1", ylab="F2", main="Rtsne Plot of Data")
-
-
-bckg=tsDncall$Y[,1]<(-25) # the exact position of the clusters is random so this should be adjusted accordingly
-mnbg=mean(Dncall[bckg,])
-bckfg=tsnDncll$Y[,2]<(-30) # the exact position of the clusters is random so this should be adjusted accordingly
-mnfbg=mean(Dncll[bckfg,])
-Dncc=Dncll-mnfbg
-bck3g=tsnDnll3$Y[,2]>(33)
+bck3g=tsnDnll3$Y[,2]<(-35)
 mn3bg=mean(Dnll3[bck3g,])
 Dn3=Dnll3-mn3bg
-dgl3=as.factor(dgalless[batches=="R" & dgall %in% c("C","GBM","ML","MB")])
+
+dgl3=as.factor(dgalless[batches=="R"])
 dg3=as.character(dgl3)
 dg3=as.factor(dg3)
 dg3GBM=dg3 == "GBM"
-
-#limma
-
-vsC05_=limfit(dgalless,Dncall-mnbg, cmf=4, p=0.05)
-vbC01_=limfit(dgll,Dncc, cmf=4, p=0.01)
-vbc=unique(unlist(vbC01_))
-v3c01_=limfit(dg3,Dn3, cmf=4, p=0.01)
-v3c=unique(unlist(v3c01_))
-vbdiff=limfit(dgll,Dncc, cmf=1, p=0.05)
-
-plot(meanall, sdall, col=(idall %in% vbC05_all)*1+1)
-plotMDS(Dncll[vbC05_all,], col=dgi)
-
-
 d3New=(dg3GBM&(!(colnames(Dn3) %in% the5)))|(dg3=="MB")
 d3Ntrue=dg3GBM[d3New]
+d3old=!d3New&dg3!="G"
 
+# ... and for the batch compensated sample pool
+tsnDncll=Rtsne(Dncll, initial_dims = 3, perplexity = 20, theta=0)
+plot(tsnDncll$Y, pch=16, col=cpl(586)[rank(meanall)], xlab="F1", ylab="F2", main="Rtsne Plot of Data")
+bckfg=tsnDncll$Y[,2]>(63) # the exact position of the clusters is random so this should be adjusted accordingly
+plot(tsnDncll$Y, pch=16, col=bckfg+1, xlab="F1", ylab="F2", main="Rtsne Plot of Data")
+
+mnfbg=mean(Dncll[bckfg,])
 Dncllnms=colnames(Dncll)
 Dncc=Dncll-mnfbg
 
 
-DLOOX3GBM_=lapply(seq_along(dgll),function(p){
-  scan3crit(Dncc[vbc,-p], dgllGBM[-p])
+
+# limma
+# for the comBat-ed set
+
+vbc_=lapply(1:28,function(x){
+  f=rep(0,28)
+  f[x]=1
+  f=factor(f)
+  r=limfit_(f,Dncc, p=0.05)
+  return(r[[1]])
 })
 
-DLOOX3C_=lapply(seq_along(dgll),function(p){
-  scan3crit(Dncc[vbc,-p], dgllC[-p])
+vbc0=unique(unlist(vbc_)) # the mimotopes with significant reactivity with at least one pateint's IgM
+lv=length(vbc0)
+
+vbcranks=t(sapply(vbc0,function(i){     # convert the table of mimotope reactivities (rows - the mimotopes in descending order columns - patients)
+  sapply(vbc_, function(j){             # ordered by the limma algorithm by degree of expression to ranks for each column (patient)
+    if (i %in% j) which(j==i) else length(j)+1
+  })
+}))
+rownames(vbcranks)=vbc0
+vbcrmd=rowMedians(vbcranks)
+vbcranks=vbcranks[order(vbcrmd),]       # the rows of the table of ranks are ordered by the median rank for each mimotope reactivity
+
+bf=rownames(vbcranks)[1:294]  
+FSboots=lapply(1:28, function(i){                                    # bootstrap based selection of profiles using a leave one out scheme for the patients and starting with the upper half of the mimotopes 
+  proct=proc.time()                                                  # ordered by median rank which organizes the profiles around highly expressed reactivities,
+  xb=profileSearch(Dncc[,-i],bf,dgllGBM[-i])                          # the profilesearch algorithm uses them only for the initial recursive elimination search
+  x=xb[[2]]                                                          # further adding features from the whole set in the subsequent forward search. The two steps are repeated 
+  plotMDS(Dncc[x,], col=as.integer(dgll), main=rownames(Dncc)[i])    # 5 times which yields slightly different sets due to the a stochastic factor in the criterion, 
+  fnm=paste("FSboots_",sample(10000,1),".txt", sep="", collapse="")  # then the consensus features from the 5 runs are selected and a final recursive elimination step is performed on them. 
+  write(x, file=fnm)
+  beep(3)
+  print(proc.time()-proct)
+  return(xb)                             # xb[[1]] is a list of the consensus profiles after the first and the second step
+})                                       # xb[[2]] is the final profile after the recursive elimination applied on the consensus of the second step
+
+# summarize
+FSbootsi=sapply(FSboots, function(l){l[[2]]})
+FSboot=table(unlist(FSbootsi))
+FSbootcom=sapply(0:27, function(i){x=names(FSboot)[FSboot>i]; x[order(FSboot[x])]}) # profiles ordered by the number of bootstrap sets the features 
+                                         # are common for starting from none (all features are concatenated) to 
+                                         # 28 - the features found in all bootstrap sets (from a leave one out scheme relative to the patients)
+                                         # the 28th feature set contains only one peptide common for all sets and is ommitted from now on
+
+for (i in 1:27) plotMDS(Dncc[FSbootcom[[i]],], col=as.integer(dgll), main=i)
+
+for (i in 1:27) {
+  plot(cmdscale(dist(t(Dn3[FSbootcom[[i]],]))), cex=0, main=i)
+  text(cmdscale(dist(t(Dn3[FSbootcom[[i]],]))), col=as.integer(dg3), labels = colnames(Dn3))
+}
+
+MCCscrv=t(sapply(1:1000, function(j){     # A thousand iterations of scrambling the R batch data matrix Dn3 (before batch compensation) by row
+  scrD3=apply(Dn3,2,sample)               # and training svm models on the patients common with the comBat-ed set Dncc, followed by predicting the     
+  rownames(scrD3)=rownames(Dn3)           # the rest of the patients. At each step 27 models are trained using one of the 27 feature sets selected 
+  colnames(scrD3)=colnames(Dn3)           # in the 'summarize' step of the bootstrap feature selection algorithm described above.
+  m=sapply(1:27,function(i){              # the Mathiew's Correlation Coefficient is calculated to assessthe quality of each model 
+    y=cmdscale(dist(t(scrD3[FSbootcom[[i]],])))   #and is saved for further processing i MCCscrv, the atter having dimensions 1000,27
+    x=svm(y[d3old,], as.factor(dg3GBM[d3old]), gamma = 0.003, cost=1000)
+    t=table(d3Ntrue,predict(x, newdata=y[d3New,]))
+    TP=t[4]; TN=t[1];FP=t[2];FN=t[3]
+    z=(TP*TN-FP*FN)/sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN))
+    if (is.nan(z)) return(0) else return(z)
+  })
+  return(m)
+}))
+dim(MCCscrv)
+xvpru=apply(MCCscrv,2,quantile,0.95)    # The 0.05 and the 0.95 percentile's of MCC values of the 1000 models for each column of MCCscrv are taken as a confidence interval
+xvprl=apply(MCCscrv,2,quantile,0.05)    # for MCC of the actual models that will use the feature set corresponding to that column.
+
+MCCesvmv=sapply(1:27,function(i){       #  MCC of svm models trained and tested on the same patient sets as above (for MCCscrv) and the 27 feature sets 
+    y=cmdscale(dist(t(Dn3[FSbootcom[[i]],])))    # but using the actual data matrix Dn3
+    x=svm(y[d3old,], as.factor(dg3GBM[d3old]), gamma = 0.003, cost=1000)
+    t=table(d3Ntrue,predict(x, newdata=y[d3New,]))
+    TP=t[4]; TN=t[1];FP=t[2];FN=t[3]
+    z=(TP*TN-FP*FN)/sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN))
+    if (is.nan(z)) return(0) else return(z)
 })
 
-DLOOX3ML_=list()
-for (p in 1:28) {
-  x=scan3crit(Dncc[vbc,-p], dgllML[-p])
-  DLOOX3ML_[[p]]=x
-  flnm=paste(c("DLOOX3ML_",p), collapse="")
-  save(DLOOX3ML_, file=flnm)
-  print(paste(c("Case",p),collapse=" "))
-}
-
-
-DLOOX3GBMe_=list()
-for (p in 1:28) {
-  x=scan3crit(Dncc[vbc,-p], dgllGBM[-p], d=2)
-  DLOOX3GBMe_[[p]]=x
-  flnm=paste(c("DLOOX3GBMe_",p), collapse="")
-  save(DLOOX3GBMe_, file=flnm)
-  print(paste(c("Case",p),collapse=" "))
-}
-DLOOX3Ce_=list()
-for (p in 1:28) {
-  x=scan3crit(Dncc[vbc,-p], dgllC[-p], d=2)
-  DLOOX3Ce_[[p]]=x
-  flnm=paste(c("DLOOX3Ce_",p), collapse="")
-  save(DLOOX3Ce_, file=flnm)
-  print(paste(c("Case",p),collapse=" "))
-}
-DLOOX3MLe_=list()
-for (p in 1:28) {
-  x=scan3crit(Dncc[vbc,-p], dgllML[-p], d=2)
-  DLOOX3MLe_[[p]]=x
-  flnm=paste(c("DLOOX3MLe_",p), collapse="")
-  save(DLOOX3MLe_, file=flnm)
-  print(paste(c("Case",p),collapse=" "))
-}
-
-
-
-daloox3GBM_=lapply(DLOOX3GBM_, function(i){rownames(i[1][[1]])})
-names(daloox3GBM_)=Dncllnms
-daloox3GBM_t=table(unlist(daloox3GBM_))
-daloox3GBM_tco=sapply(0:27, function(i){x=names(daloox3GBM_t)[daloox3GBM_t>i]; x[order(daloox3GBM_t[x])]})
-daloox3GBM_tco3=lapply(daloox3GBM_tco,function(x){x[x %in% v3c]})
-
-daloox3C_=lapply(DLOOX3C_, function(i){rownames(i[1][[1]])})
-names(daloox3C_)=Dncllnms
-daloox3C_t=table(unlist(daloox3C_))
-daloox3C_tco=sapply(0:27, function(i){x=names(daloox3C_t)[daloox3C_t>i]; x[order(daloox3C_t[x])]})
-daloox3C_tco3=lapply(daloox3C_tco,function(x){x[x %in% v3c]})
-
-daloox3ML_=lapply(DLOOX3ML_, function(i){rownames(i[1][[1]])})
-names(daloox3ML_)=Dncllnms
-daloox3ML_t=table(unlist(daloox3ML_))
-daloox3ML_tco=sapply(0:27, function(i){x=names(daloox3ML_t)[daloox3ML_t>i]; x[order(daloox3ML_t[x])]})
-daloox3ML_tco3=lapply(daloox3ML_tco,function(x){x[x %in% v3c]})
-
-
-daloox3GBMe_=lapply(DLOOX3GBMe_, function(i){rownames(i[1][[1]])})
-names(daloox3GBMe_)=Dncllnms
-daloox3GBMe_t=table(unlist(daloox3GBMe_))
-daloox3GBMe_tco=sapply(0:27, function(i){x=names(daloox3GBMe_t)[daloox3GBMe_t>i]; x[order(daloox3GBMe_t[x])]})
-daloox3GBMe_tco3=lapply(daloox3GBMe_tco,function(x){x[x %in% v3c]})
-
-daloox3Ce_=lapply(DLOOX3Ce_, function(i){rownames(i[1][[1]])})
-names(daloox3Ce_)=Dncllnms
-daloox3Ce_t=table(unlist(daloox3Ce_))
-daloox3Ce_tco=sapply(0:27, function(i){x=names(daloox3Ce_t)[daloox3Ce_t>i]; x[order(daloox3Ce_t[x])]})
-daloox3Ce_tco3=lapply(daloox3Ce_tco,function(x){x[x %in% v3c]})
-
-daloox3MLe_=lapply(DLOOX3MLe_, function(i){rownames(i[1][[1]])})
-names(daloox3MLe_)=Dncllnms
-daloox3MLe_t=table(unlist(daloox3MLe_))
-daloox3MLe_tco=sapply(0:27, function(i){x=names(daloox3MLe_t)[daloox3MLe_t>i]; x[order(daloox3MLe_t[x])]})
-daloox3MLe_tco3=lapply(daloox3MLe_tco,function(x){x[x %in% v3c]})
-
-plotMDS(Dncll[names(daloox3GBM_t)[daloox3GBM_t>23],], col=as.integer(dgll))
-for (i in 1:28) plot(cmdscale(fraD(t(Dncll[names(daloox3GBM_t[daloox3GBM_t==i]),]),.25)), main=i, pch=16, cex=1.2, col=as.integer(dgll))
-
-daltco_hc=hclust(dist((Dn3[daloox3GBM_tco[[19]],])))
-daltco_dg=as.dendrogram(daltco_hc)
-d3heatmap(t(Dncc[daloox3GBM_tco[[19]],]), Colv = daltco_dg, distfun = fraD, hclustfun = hclwrd, col=cpl(128), dendrogram = "row")
-d3heatmap(t(Dncc[daloox3GBM_tco[[19]],]),distfun = fraD, hclustfun = hclwrd, col=cpl(128))
-
-# plots of MDS D1xD2 of the data for the features common for 1 to 28 of the LOOV bootstrap 
-# derived sets (e.g. "Set 14" means the features comon for 14 or more bootstrap sets,
-# 1 means all possible unique features found in the bootstrap, 2 - the non-specific features 
-# and 28 - those that are found in each and every bootstrap set)
-for (i in 1:28) plotMDS(Dncc[daloox3Ce_tco[[i]],], col=as.integer(dgll), main=i)
-for (i in 1:28) plotMDS(Dncc[daloox3GBMe_tco[[i]],], col=as.integer(dgll), main=i)
-for (i in 1:28) plotMDS(Dncc[daloox3MLe_tco[[i]],], col=as.integer(dgll), main=i)
-
-
-
-for (i in 1:28) {
-  plot(cmdscale(fraD(t(Dn3[daloox3GBM_tco[[i]],]))), cex=0, main=i)
-  text(cmdscale(fraD(t(Dn3[daloox3GBM_tco[[i]],]))), col=as.integer(dg3), labels = colnames(Dn3))
-}
-
-for (i in 1:28) {
-  plot(cmdscale(fraD(t(Dn3[daloox3GBMe_tco[[i]],]),2)), cex=0, main=i)
-  text(cmdscale(fraD(t(Dn3[daloox3GBMe_tco[[i]],]),2)), col=as.integer(dg3), labels = colnames(Dn3))
-}
-
-for (i in 1:28) {
-  plot(cmdscale(fraD(t(Dn3[daloox3GBM_tco3[[i]],]))), cex=0, main=i)
-  text(cmdscale(fraD(t(Dn3[daloox3GBM_tco3[[i]],]))), col=as.integer(dg3), labels = colnames(Dn3))
-}
-
-for (i in 1:28) {
-  plotMDS(Dn3[daloox3GBM_tco3[[i]],], col=as.integer(dg3), main=paste(c("E",i)))
-}
-
-
-
-################### Plot of best separation of batch "R" using the generalizing feature set common for 19 
-# or more bootstrap sets derived from the batch compensated data set. Note the proper classification of the 
-# labeled cases - those were not included in the batch compensated set
-
-plot(cmdscale(fraD(t(Dn3[daloox3GBM_tco[[19]],]),.25)), col=as.integer(dg3),cex=1.5, pch=16, main="Fractional Distance")
-par(new=TRUE)
-plot(cmdscale(fraD(t(Dn3[daloox3GBM_tco[[19]],]),.25)), col=as.integer(!(colnames(Dn3) %in% Dncllnms)),cex=2.5)
-par(new=FALSE)
-
-plot(cmdscale(fraD(t(Dn3[daloox3GBM_tco[[19]],]),2)), col=as.integer(dg3),cex=1.5, pch=16, main="Euclidean Distance")
-par(new=TRUE)
-plot(cmdscale(fraD(t(Dn3[daloox3GBM_tco[[19]],]),2)), col=as.integer(!(colnames(Dn3) %in% Dncllnms)),cex=2.5)
-par(new=FALSE)
-
-
-daltco_hc=hclust(dist((Dn3[daloox3GBM_tco[[19]],])))
-daltco_dg=as.dendrogram(daltco_hc)
-##############
-d3heatmap(t(Dncc[daloox3GBM_tco[[19]],]), Colv = daltco_dg, distfun = fraD, hclustfun = hclwrd, col=cpl(128), dendrogram = "row")
-##############
-d3heatmap(t(Dncc[daloox3GBM_tco[[19]],]),distfun = fraD, hclustfun = hclwrd, col=cpl(128), dendrogram = "row")
-d3mds=cmdscale(fraD(t(Dn3[daloox3GBM_tco[[19]],])), k=2)
-d3MDS_2cor=apply(Dn3[daloox3GBM_tco[[19]],],1,function(x){cor(x,d3mds[,2])})
-d3MDS_2cor[order(d3MDS_2cor)]
-d3MDS2=names(d3MDS_2cor[abs(d3MDS_2cor)>0.3])
-dalmds2_hc=hclust(dist((Dn3[d3MDS2,])))
-dalmds2_dg=as.dendrogram(dalmds2_hc)
-d3heatmap(t(Dn3[d3MDS2,]), distfun = fraD, Colv =, hclustfun = hclwrd, col=cpl(128))
-
-# Original script for MCCtr_val.pdf - see figmaker.R
-
-MCCesvmt=unlist(MCCesvmt)
-MCCesvmv=unlist(MCCesvmv)
-names(MCCesvmt)=1:28
-names(MCCesvmv)=1:28
-op=par(mfrow=c(2,1), omi=c(0.85,0.85,0,0), mai=c(.5,0,0.75,0))
-barplot(MCCesvmt, ylim = c(-0.5,1), main="Training")
-barplot(MCCesvmv, ylim = c(-0.5,1), main="Validation")
-title(xlab = "Commonality", ylab="MCC", outer=TRUE)
-par(op)
-
-
-## svm
-MCCesvmv=sapply(1:28,function(i){
-  y=cmdscale(fraD(t(Dn3[daloox3GBMe_tco[[i]],]),2))
-  x=svm(y[!d3New,], as.factor(dg3GBM[!d3New]), gamma = 0.1, cost=1000)
-  t=table(d3Ntrue,predict(x, newdata=y[d3New,]))
+MCCesvmt=sapply(1:27,function(i){       #  MCC of svm models trained on the same patient sets as above and the 27 feature sets but tested back on the training set
+  y=cmdscale(dist(t(Dn3[FSbootcom[[i]],])))
+  x=svm(y[d3old,], as.factor(dg3GBM[d3old]), gamma = 0.003, cost=1000)
+  t=table(dg3GBM[d3old],predict(x, newdata=y[d3old,]))
   TP=t[4]; TN=t[1];FP=t[2];FN=t[3]
   z=(TP*TN-FP*FN)/sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN))
-  if (is.na(z)) 0 else z
+  if (is.nan(z)) return(0) else return(z)
 })
-print(c(max(MCCesvmv),which.max(MCCesvmv)))
-MCCesvmt=sapply(1:28,function(i){
-  y=cmdscale(fraD(t(Dn3[daloox3GBMe_tco[[i]],]),2))
-  x=svm(y, as.factor(dg3GBM), gamma = 0.1, cost=1000)
-  t=table(dg3GBM,predict(x, newdata=y))
-  TP=t[4]; TN=t[1];FP=t[2];FN=t[3]
-  (TP*TN-FP*FN)/sqrt((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN))
-})
-print(c(max(MCCesvmt),which.max(MCCesvmt)))
-xp=unlist(MCCesvmt)+runif(28,-0.01,0.01)
-yp=unlist(MCCesvmv)+runif(28,-0.01,0.01)
-plot(xp,yp,cex=0, xlim=c(0,1),ylim=c(-1,1))
-lines(xp,yp,cex=0, xlim=c(0,1),ylim=c(-1,1))
-text(xp,yp,1:28, cex=0.8, xlim=c(0,1),ylim=c(-1,1))
+names(MCCesvmt)=1:27
+names(MCCesvmv)=1:27
 
+# Figures
+
+pdf(file="MCC_models.pdf", width=6, height=9.7)
+op=par(mfrow=c(2,1), omi=c(1,0.85,0,0), mai=c(0.5,0,1,0))
+barplot(t(MCCesvmv), ylim=c(-1,1), xlim=c(0,28), width=0.9, space=0.11111,  col=1, las=3)
+title(main="                                                          Validation", line=0)
+par(new=T)
+barplot(xvpru,ylim=c(-1,1), xlim=c(0,28), width=1, space=0, border=rgb(0.8,0.8,0.8,1), col=rgb(0.5,0.5,0.5,0.5))
+par(new=T)
+barplot(xvprl,ylim=c(-1,1), xlim=c(0,28), width=1, space=0, border=rgb(0.8,0.8,0.8,1), col=rgb(0.5,0.5,0.5,0.5))
+par(new=F)
+barplot(t(MCCesvmt), ylim=c(-1,1), xlim=c(0,28), width=0.9, space=0.11111,  col=1, las=3)
+title(main="                                                          Training", line=0)
+par(new=T)
+barplot(xvpru,ylim=c(-1,1), xlim=c(0,28), width=1, space=0, border=rgb(0.8,0.8,0.8,0.5), col=rgb(0.5,0.5,0.5,0.5))
+par(new=T)
+barplot(xvprl,ylim=c(-1,1), xlim=c(0,28), width=1, space=0, border=rgb(0.8,0.8,0.8,0.5), col=rgb(0.5,0.5,0.5,0.5))
+title(xlab = "Commonality", ylab="MCC", outer=TRUE)
+par(op)
+dev.off()
+
+
+
+y=cmdscale(dist(t(Dn3[FSbootcom[[15]],])))
+r=apply(y,2,range)
+x=svm(y[d3old,], as.factor(dg3GBM[d3old]), probability=T, gamma = 0.003, cost=1000)
+pry=sapply(seq(r[,1][1], r[,1][2], length.out = 10), function(x1){         # preparing the smooth color coded probability field for the svm plot
+    sapply(seq(r[,2][1], r[,2][2], length.out = 10), function(x2){
+      attr(predict(x, newdata=t(c(x1,x2)), probability = TRUE), "probabilities")[1]
+  })
+})
+
+pdf(file="SVMpred.pdf", width=7, height=6)
+dg3x=stri_extract_all(colnames(Dn3), regex="(?<=_)\\w+")
+coldg3=as.integer(dg3)
+coldg3[coldg3==3]=2
+coldg3[coldg3==5]=3
+d3=d3New|d3old
+op=par(mai=c(1,1,1,1))
+image2D(t(pry),resfac = 10, col=cm.colors(1000), xaxt="n", yaxt="n", xlab="", ylab="", clab="GBM Probability")
+op=par(new=TRUE,mai=c(1,1,1,1.575))
+par(new=T)
+plot(y[,], cex=0, xlim=r[,1], ylim=r[,2], xlab="D1", ylab="D2")
+points(y[d3New,], cex=5, xlim=r[,1], ylim=r[,2], pch=1, xlim=r[,1], ylim=r[,2])
+text(y[d3,], labels=dg3x[d3], col=coldg3[d3], xlim=r[,1], ylim=r[,2], xlab="D1", ylab="D2")
+dev.off()
