@@ -6,7 +6,7 @@
 # The criteria are transformed to compensate for their dependence on the dimensionality in the range of dimensions 3-600 
 # and to restrict them in the range between -1 and 1. The conversion functions dunnfix, connfix and bhgamfix 
 # are vectorized for faster calculations. The dimesionality standardized values obtained are converted using exponential function 
-# with a base s randomly selected in the range of 1 - 1.5 and common  for all calculations in one call to this function.
+# with a base s randomly selected in the range of 1.5 - 5 and common  for all calculations in one call to this function.
 # This transformation ensures the non-negativity of the criteria and adds a small random factor selecting in every call
 # a slightly different profile. In this way the huge profile space is searched more efficiently in a kind of bootstrap 
 # fashion and the final profile is determined by consensus of several (n=5) profiles in profileSearch().
